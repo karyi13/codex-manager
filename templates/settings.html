@@ -37,6 +37,7 @@
                 <button class="tab-btn active" data-tab="proxy">🌐 代理设置</button>
                 <button class="tab-btn" data-tab="cpa">☁️ CPA上传</button>
                 <button class="tab-btn" data-tab="registration">⚙️ 注册配置</button>
+                <button class="tab-btn" data-tab="email-code">📧 验证码配置</button>
                 <button class="tab-btn" data-tab="database">💾 数据库</button>
             </div>
 
@@ -266,6 +267,52 @@
                                 <button type="submit" class="btn btn-primary">💾 保存设置</button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 验证码配置 -->
+            <div class="tab-content" id="email-code-tab">
+                <div class="card">
+                    <div class="card-header">
+                        <h3>验证码等待配置</h3>
+                        <span class="hint">配置 Outlook 邮箱验证码获取的超时时间和轮询间隔</span>
+                    </div>
+                    <div class="card-body">
+                        <form id="email-code-form">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="email-code-timeout">等待超时 (秒)</label>
+                                    <input type="number" id="email-code-timeout" name="timeout" value="120" min="30" max="600">
+                                    <span class="hint">等待验证码的最大时间，建议 60-300 秒</span>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="email-code-poll-interval">轮询间隔 (秒)</label>
+                                    <input type="number" id="email-code-poll-interval" name="poll_interval" value="3" min="1" max="30">
+                                    <span class="hint">检查邮箱的时间间隔，建议 2-5 秒</span>
+                                </div>
+                            </div>
+
+                            <div class="form-actions">
+                                <button type="submit" class="btn btn-primary">💾 保存设置</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="card" style="margin-top: var(--spacing-lg);">
+                    <div class="card-header">
+                        <h3>验证码获取策略</h3>
+                    </div>
+                    <div class="card-body">
+                        <ul class="info-list">
+                            <li><strong>渐进式检查</strong>：前 3 次轮询只检查未读邮件，之后检查所有邮件</li>
+                            <li><strong>时间戳过滤</strong>：自动跳过 OTP 发送前的旧邮件</li>
+                            <li><strong>验证码去重</strong>：避免重复使用同一验证码</li>
+                            <li><strong>多策略提取</strong>：主题优先 → 语义匹配 → 兜底匹配</li>
+                            <li><strong>发件人验证</strong>：严格验证邮件来自 OpenAI 官方</li>
+                        </ul>
                     </div>
                 </div>
             </div>

@@ -27,8 +27,35 @@ from ..config.constants import (
     OTP_CODE_SEMANTIC_PATTERN,
     OPENAI_EMAIL_SENDERS,
     OPENAI_VERIFICATION_KEYWORDS,
+    OTP_WAIT_TIMEOUT,
+    OTP_POLL_INTERVAL,
 )
-from ..config import get_settings
+from ..database import crud
+from ..database.session import get_db
+
+
+def get_email_code_settings() -> dict:
+    """
+    从数据库获取验证码等待配置
+
+    Returns:
+        dict: 包含 timeout 和 poll_interval 的字典
+    """
+    try:
+        with get_db() as db:
+            timeout_setting = crud.get_setting(db, "email_code.timeout")
+            poll_interval_setting = crud.get_setting(db, "email_code.poll_interval")
+
+            return {
+                "timeout": int(timeout_setting.value) if timeout_setting else OTP_WAIT_TIMEOUT,
+                "poll_interval": int(poll_interval_setting.value) if poll_interval_setting else OTP_POLL_INTERVAL,
+            }
+    except Exception as e:
+        logger.warning(f"获取验证码配置失败，使用默认值: {e}")
+        return {
+            "timeout": OTP_WAIT_TIMEOUT,
+            "poll_interval": OTP_POLL_INTERVAL,
+        }
 
 
 logger = logging.getLogger(__name__)
@@ -474,10 +501,10 @@ class OutlookService(BaseEmailService):
             self.update_status(False, EmailServiceError(f"未找到邮箱对应的账户: {email}"))
             return None
 
-        # 使用配置的超时时间
-        settings = get_settings()
-        actual_timeout = timeout or settings.email_code_timeout
-        poll_interval = settings.email_code_poll_interval
+        # 从数据库获取验证码等待配置
+        code_settings = get_email_code_settings()
+        actual_timeout = timeout or code_settings["timeout"]
+        poll_interval = code_settings["poll_interval"]
 
         logger.info(f"[{email}] 开始获取验证码，超时 {actual_timeout}s，OTP发送时间: {otp_sent_at}")
 

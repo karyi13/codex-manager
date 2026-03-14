@@ -40,7 +40,9 @@ const elements = {
     proxyModalTitle: document.getElementById('proxy-modal-title'),
     // CPA 设置
     cpaForm: document.getElementById('cpa-form'),
-    testCpaBtn: document.getElementById('test-cpa-btn')
+    testCpaBtn: document.getElementById('test-cpa-btn'),
+    // 验证码设置
+    emailCodeForm: document.getElementById('email-code-form')
 };
 
 // 选中的服务 ID
@@ -206,6 +208,11 @@ function initEventListeners() {
     if (elements.testCpaBtn) {
         elements.testCpaBtn.addEventListener('click', handleTestCpa);
     }
+
+    // 验证码设置
+    if (elements.emailCodeForm) {
+        elements.emailCodeForm.addEventListener('submit', handleSaveEmailCode);
+    }
 }
 
 // 加载设置
@@ -226,6 +233,12 @@ async function loadSettings() {
         document.getElementById('password-length').value = data.registration?.default_password_length || 12;
         document.getElementById('sleep-min').value = data.registration?.sleep_min || 5;
         document.getElementById('sleep-max').value = data.registration?.sleep_max || 30;
+
+        // 验证码等待配置
+        if (data.email_code) {
+            document.getElementById('email-code-timeout').value = data.email_code.timeout || 120;
+            document.getElementById('email-code-poll-interval').value = data.email_code.poll_interval || 3;
+        }
 
         // 加载 CPA 设置
         loadCpaSettings();
@@ -394,6 +407,36 @@ async function handleSaveRegistration(e) {
     try {
         await api.post('/settings/registration', data);
         toast.success('注册配置已保存');
+    } catch (error) {
+        toast.error('保存失败: ' + error.message);
+    }
+}
+
+// 保存验证码等待配置
+async function handleSaveEmailCode(e) {
+    e.preventDefault();
+
+    const timeout = parseInt(document.getElementById('email-code-timeout').value);
+    const pollInterval = parseInt(document.getElementById('email-code-poll-interval').value);
+
+    // 客户端验证
+    if (timeout < 30 || timeout > 600) {
+        toast.error('等待超时必须在 30-600 秒之间');
+        return;
+    }
+    if (pollInterval < 1 || pollInterval > 30) {
+        toast.error('轮询间隔必须在 1-30 秒之间');
+        return;
+    }
+
+    const data = {
+        timeout: timeout,
+        poll_interval: pollInterval
+    };
+
+    try {
+        await api.post('/settings/email-code', data);
+        toast.success('验证码配置已保存');
     } catch (error) {
         toast.error('保存失败: ' + error.message);
     }
