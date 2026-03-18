@@ -767,7 +767,7 @@ async def update_team_manager_settings(request: TeamManagerSettings):
 @router.post("/team-manager/test")
 async def test_team_manager_connection(request: TeamManagerTestRequest):
     """测试 Team Manager 连接"""
-    from ...core.team_manager import test_team_manager_connection as do_test
+    from ...core.upload.team_manager_upload import test_team_manager_connection as do_test
 
     settings = get_settings()
     api_key = request.api_key

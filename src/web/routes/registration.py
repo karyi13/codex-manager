@@ -369,7 +369,7 @@ def _run_sync_registration_task(task_uuid: str, email_service_type: str, proxy: 
                 # 自动上传到 CPA（可多服务）
                 if auto_upload_cpa:
                     try:
-                        from ...core.cpa_upload import upload_to_cpa, generate_token_json
+                        from ...core.upload.cpa_upload import upload_to_cpa, generate_token_json
                         from ...database.models import Account as AccountModel
                         saved_account = db.query(AccountModel).filter_by(email=result.email).first()
                         if saved_account and saved_account.access_token:
@@ -402,7 +402,7 @@ def _run_sync_registration_task(task_uuid: str, email_service_type: str, proxy: 
                 # 自动上传到 Sub2API（可多服务）
                 if auto_upload_sub2api:
                     try:
-                        from ...core.sub2api_upload import upload_to_sub2api
+                        from ...core.upload.sub2api_upload import upload_to_sub2api
                         from ...database.models import Account as AccountModel
                         saved_account = db.query(AccountModel).filter_by(email=result.email).first()
                         if saved_account and saved_account.access_token:
@@ -427,7 +427,7 @@ def _run_sync_registration_task(task_uuid: str, email_service_type: str, proxy: 
                 # 自动上传到 Team Manager（可多服务）
                 if auto_upload_tm:
                     try:
-                        from ...core.team_manager import upload_account_to_tm
+                        from ...core.upload.team_manager_upload import upload_account_to_tm
                         from ...database.models import Account as AccountModel
                         saved_account = db.query(AccountModel).filter_by(email=result.email).first()
                         if saved_account and saved_account.access_token:
