@@ -57,9 +57,15 @@ const elements = {
     sub2ApiServiceForm: document.getElementById('sub2api-service-form'),
     sub2ApiServiceModalTitle: document.getElementById('sub2api-service-modal-title'),
     testSub2ApiServiceBtn: document.getElementById('test-sub2api-service-btn'),
-    // Team Manager 设置
-    tmForm: document.getElementById('tm-form'),
-    testTmBtn: document.getElementById('test-tm-btn'),
+    // Team Manager 服务管理
+    addTmServiceBtn: document.getElementById('add-tm-service-btn'),
+    tmServicesTable: document.getElementById('tm-services-table'),
+    tmServiceEditModal: document.getElementById('tm-service-edit-modal'),
+    closeTmServiceModal: document.getElementById('close-tm-service-modal'),
+    cancelTmServiceBtn: document.getElementById('cancel-tm-service-btn'),
+    tmServiceForm: document.getElementById('tm-service-form'),
+    tmServiceModalTitle: document.getElementById('tm-service-modal-title'),
+    testTmServiceBtn: document.getElementById('test-tm-service-btn'),
     // 验证码设置
     emailCodeForm: document.getElementById('email-code-form'),
     // Outlook 设置
@@ -80,6 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadProxies();
     loadCpaServices();
     loadSub2ApiServices();
+    loadTmServices();
     initEventListeners();
 });
 
@@ -236,12 +243,26 @@ function initEventListeners() {
     if (elements.webuiSettingsForm) {
         elements.webuiSettingsForm.addEventListener('submit', handleSaveWebuiSettings);
     }
-    // Team Manager 设置
-    if (elements.tmForm) {
-        elements.tmForm.addEventListener('submit', handleSaveTm);
+    // Team Manager 服务管理
+    if (elements.addTmServiceBtn) {
+        elements.addTmServiceBtn.addEventListener('click', () => openTmServiceModal());
     }
-    if (elements.testTmBtn) {
-        elements.testTmBtn.addEventListener('click', handleTestTm);
+    if (elements.closeTmServiceModal) {
+        elements.closeTmServiceModal.addEventListener('click', closeTmServiceModal);
+    }
+    if (elements.cancelTmServiceBtn) {
+        elements.cancelTmServiceBtn.addEventListener('click', closeTmServiceModal);
+    }
+    if (elements.tmServiceEditModal) {
+        elements.tmServiceEditModal.addEventListener('click', (e) => {
+            if (e.target === elements.tmServiceEditModal) closeTmServiceModal();
+        });
+    }
+    if (elements.tmServiceForm) {
+        elements.tmServiceForm.addEventListener('submit', handleSaveTmService);
+    }
+    if (elements.testTmServiceBtn) {
+        elements.testTmServiceBtn.addEventListener('click', handleTestTmService);
     }
 
     // CPA 服务管理
@@ -315,8 +336,6 @@ async function loadSettings() {
 
         // 加载 Outlook 设置
         loadOutlookSettings();
-        // 加载 Team Manager 设置
-        loadTmSettings();
 
         // Web UI 访问密码提示
         if (data.webui?.has_access_password) {
@@ -1030,73 +1049,167 @@ async function handleTestDynamicProxy() {
     }
 }
 
-// ============== Team Manager 设置 ==============
+// ============== Team Manager 服务管理 ==============
 
-async function loadTmSettings() {
+async function loadTmServices() {
+    if (!elements.tmServicesTable) return;
     try {
-        const data = await api.get('/settings/team-manager');
-        document.getElementById('tm-enabled').checked = data.enabled || false;
-        document.getElementById('tm-api-url').value = data.api_url || '';
-        document.getElementById('tm-api-key').value = '';
-        document.getElementById('tm-api-key').placeholder = data.has_api_key ? '已配置，留空保持不变' : '请输入 API Key';
-    } catch (error) {
-        console.error('加载 Team Manager 设置失败:', error);
+        const services = await api.get('/tm-services');
+        renderTmServicesTable(services);
+    } catch (e) {
+        elements.tmServicesTable.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--danger-color);">${e.message}</td></tr>`;
     }
 }
 
-async function handleSaveTm(e) {
+function renderTmServicesTable(services) {
+    if (!services || services.length === 0) {
+        elements.tmServicesTable.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:20px;">暂无 Team Manager 服务，点击「添加服务」新增</td></tr>';
+        return;
+    }
+    elements.tmServicesTable.innerHTML = services.map(s => `
+        <tr>
+            <td>${escapeHtml(s.name)}</td>
+            <td style="font-size:0.85rem;color:var(--text-muted);">${escapeHtml(s.api_url)}</td>
+            <td>
+                <span class="badge" style="background:${s.enabled ? 'var(--success-color)' : 'var(--border)'};color:${s.enabled ? '#fff' : 'var(--text-muted)'};font-size:0.75rem;padding:2px 8px;border-radius:10px;">
+                    ${s.enabled ? '启用' : '禁用'}
+                </span>
+            </td>
+            <td style="text-align:center;">${s.priority}</td>
+            <td>
+                <button class="btn btn-secondary btn-sm" onclick="editTmService(${s.id})">编辑</button>
+                <button class="btn btn-secondary btn-sm" onclick="testTmServiceById(${s.id})">测试</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteTmService(${s.id}, '${escapeHtml(s.name)}')">删除</button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function openTmServiceModal(service = null) {
+    document.getElementById('tm-service-id').value = service ? service.id : '';
+    document.getElementById('tm-service-name').value = service ? service.name : '';
+    document.getElementById('tm-service-url').value = service ? service.api_url : '';
+    document.getElementById('tm-service-key').value = '';
+    document.getElementById('tm-service-priority').value = service ? service.priority : 0;
+    document.getElementById('tm-service-enabled').checked = service ? service.enabled : true;
+    if (service) {
+        document.getElementById('tm-service-key').placeholder = service.has_key ? '已配置，留空保持不变' : '请输入 API Key';
+    } else {
+        document.getElementById('tm-service-key').placeholder = '请输入 API Key';
+    }
+    elements.tmServiceModalTitle.textContent = service ? '编辑 Team Manager 服务' : '添加 Team Manager 服务';
+    elements.tmServiceEditModal.classList.add('active');
+}
+
+function closeTmServiceModal() {
+    elements.tmServiceEditModal.classList.remove('active');
+}
+
+async function editTmService(id) {
+    try {
+        const service = await api.get(`/tm-services/${id}`);
+        openTmServiceModal(service);
+    } catch (e) {
+        toast.error('获取服务信息失败: ' + e.message);
+    }
+}
+
+async function handleSaveTmService(e) {
     e.preventDefault();
-    const data = {
-        enabled: document.getElementById('tm-enabled').checked,
-        api_url: document.getElementById('tm-api-url').value,
-        api_key: document.getElementById('tm-api-key').value || ''
-    };
-    try {
-        await api.post('/settings/team-manager', data);
-        toast.success('Team Manager 设置已保存');
-        loadTmSettings();
-    } catch (error) {
-        toast.error('保存失败: ' + error.message);
+    const id = document.getElementById('tm-service-id').value;
+    const name = document.getElementById('tm-service-name').value.trim();
+    const apiUrl = document.getElementById('tm-service-url').value.trim();
+    const apiKey = document.getElementById('tm-service-key').value.trim();
+    const priority = parseInt(document.getElementById('tm-service-priority').value) || 0;
+    const enabled = document.getElementById('tm-service-enabled').checked;
+
+    if (!name || !apiUrl) {
+        toast.error('名称和 API URL 不能为空');
+        return;
     }
-}
-
-async function handleTestTm() {
-    const apiUrl = document.getElementById('tm-api-url').value;
-    const apiKey = document.getElementById('tm-api-key').value;
-
-    if (!apiUrl) {
-        toast.error('请先填写 API URL');
+    if (!id && !apiKey) {
+        toast.error('新增服务时 API Key 不能为空');
         return;
     }
 
-    let keyToTest = apiKey;
-    if (!keyToTest) {
-        const saved = await api.get('/settings/team-manager');
-        if (!saved.has_api_key) {
-            toast.error('请先填写 API Key');
-            return;
-        }
-        keyToTest = 'use_saved_key';
-    }
-
-    elements.testTmBtn.disabled = true;
-    elements.testTmBtn.innerHTML = '<span class="loading-spinner"></span> 测试中...';
-
     try {
-        const result = await api.post('/settings/team-manager/test', {
-            api_url: apiUrl,
-            api_key: keyToTest
-        });
+        const payload = { name, api_url: apiUrl, priority, enabled };
+        if (apiKey) payload.api_key = apiKey;
+
+        if (id) {
+            await api.patch(`/tm-services/${id}`, payload);
+            toast.success('服务已更新');
+        } else {
+            payload.api_key = apiKey;
+            await api.post('/tm-services', payload);
+            toast.success('服务已添加');
+        }
+        closeTmServiceModal();
+        loadTmServices();
+    } catch (e) {
+        toast.error('保存失败: ' + e.message);
+    }
+}
+
+async function deleteTmService(id, name) {
+    const confirmed = await confirm(`确定要删除 Team Manager 服务「${name}」吗？`);
+    if (!confirmed) return;
+    try {
+        await api.delete(`/tm-services/${id}`);
+        toast.success('已删除');
+        loadTmServices();
+    } catch (e) {
+        toast.error('删除失败: ' + e.message);
+    }
+}
+
+async function testTmServiceById(id) {
+    try {
+        const result = await api.post(`/tm-services/${id}/test`);
         if (result.success) {
             toast.success(result.message);
         } else {
             toast.error(result.message);
         }
-    } catch (error) {
-        toast.error('测试失败: ' + error.message);
+    } catch (e) {
+        toast.error('测试失败: ' + e.message);
+    }
+}
+
+async function handleTestTmService() {
+    const apiUrl = document.getElementById('tm-service-url').value.trim();
+    const apiKey = document.getElementById('tm-service-key').value.trim();
+    const id = document.getElementById('tm-service-id').value;
+
+    if (!apiUrl) {
+        toast.error('请先填写 API URL');
+        return;
+    }
+    if (!id && !apiKey) {
+        toast.error('请先填写 API Key');
+        return;
+    }
+
+    elements.testTmServiceBtn.disabled = true;
+    elements.testTmServiceBtn.textContent = '测试中...';
+
+    try {
+        let result;
+        if (id && !apiKey) {
+            result = await api.post(`/tm-services/${id}/test`);
+        } else {
+            result = await api.post('/tm-services/test-connection', { api_url: apiUrl, api_key: apiKey });
+        }
+        if (result.success) {
+            toast.success(result.message);
+        } else {
+            toast.error(result.message);
+        }
+    } catch (e) {
+        toast.error('测试失败: ' + e.message);
     } finally {
-        elements.testTmBtn.disabled = false;
-        elements.testTmBtn.textContent = '🔌 测试连接';
+        elements.testTmServiceBtn.disabled = false;
+        elements.testTmServiceBtn.textContent = '🔌 测试连接';
     }
 }
 

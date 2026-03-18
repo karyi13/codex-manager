@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from ...database.session import get_db
 from ...database.models import Account
+from ...database import crud
 from ...config.settings import get_settings
 from .accounts import resolve_account_ids
 from ...core.payment import (
@@ -61,12 +62,14 @@ class BatchCheckSubscriptionRequest(BaseModel):
 
 class UploadTMRequest(BaseModel):
     proxy: Optional[str] = None  # 保留，TM 上传不走代理
+    service_id: Optional[int] = None  # 指定 TM 服务 ID，不传则使用第一个启用的
 
 
 class BatchUploadTMRequest(BaseModel):
     ids: List[int] = []
     select_all: bool = False
     status_filter: Optional[str] = None
+    service_id: Optional[int] = None  # 指定 TM 服务 ID，不传则使用第一个启用的
     email_service_filter: Optional[str] = None
     search_filter: Optional[str] = None
 
@@ -200,14 +203,21 @@ def batch_check_subscription(request: BatchCheckSubscriptionRequest):
 @router.post("/accounts/{account_id}/upload-tm")
 def upload_account_tm(account_id: int, request: UploadTMRequest = None):
     """上传单账号到 Team Manager"""
-    settings = get_settings()
-    if not settings.tm_enabled:
-        raise HTTPException(status_code=400, detail="Team Manager 上传未启用")
-
-    api_url = settings.tm_api_url
-    api_key = settings.tm_api_key.get_secret_value() if settings.tm_api_key else ""
+    service_id = request.service_id if request and hasattr(request, 'service_id') else None
 
     with get_db() as db:
+        if service_id:
+            svc = crud.get_tm_service_by_id(db, service_id)
+        else:
+            svcs = crud.get_tm_services(db, enabled=True)
+            svc = svcs[0] if svcs else None
+
+        if not svc:
+            raise HTTPException(status_code=400, detail="未找到可用的 Team Manager 服务，请先在设置中配置")
+
+        api_url = svc.api_url
+        api_key = svc.api_key
+
         account = db.query(Account).filter(Account.id == account_id).first()
         if not account:
             raise HTTPException(status_code=404, detail="账号不存在")
@@ -219,14 +229,21 @@ def upload_account_tm(account_id: int, request: UploadTMRequest = None):
 @router.post("/accounts/batch-upload-tm")
 def batch_upload_tm(request: BatchUploadTMRequest):
     """批量上传账号到 Team Manager"""
-    settings = get_settings()
-    if not settings.tm_enabled:
-        raise HTTPException(status_code=400, detail="Team Manager 上传未启用")
-
-    api_url = settings.tm_api_url
-    api_key = settings.tm_api_key.get_secret_value() if settings.tm_api_key else ""
+    service_id = request.service_id if hasattr(request, 'service_id') else None
 
     with get_db() as db:
+        if service_id:
+            svc = crud.get_tm_service_by_id(db, service_id)
+        else:
+            svcs = crud.get_tm_services(db, enabled=True)
+            svc = svcs[0] if svcs else None
+
+        if not svc:
+            raise HTTPException(status_code=400, detail="未找到可用的 Team Manager 服务，请先在设置中配置")
+
+        api_url = svc.api_url
+        api_key = svc.api_key
+
         ids = resolve_account_ids(
             db, request.ids, request.select_all,
             request.status_filter, request.email_service_filter, request.search_filter
