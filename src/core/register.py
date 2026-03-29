@@ -723,8 +723,8 @@ class RegistrationEngine:
             )
             return None, phase_result
 
-    def _validate_verification_code(self, code: str) -> bool:
-        """验证验证码"""
+    def _validate_verification_code(self, code: str) -> Tuple[bool, Optional[str]]:
+        """验证验证码，并返回服务端给出的 continue_url（如果有）"""
         try:
             code_body = f'{{"code":"{code}"}}'
 
@@ -739,11 +739,98 @@ class RegistrationEngine:
             )
 
             self._log(f"验证码校验状态: {response.status_code}")
-            return response.status_code == 200
+            if response.status_code != 200:
+                return False, None
+
+            continue_url = None
+            try:
+                response_data = response.json() or {}
+                continue_url = str(response_data.get("continue_url") or "").strip() or None
+                if continue_url:
+                    self._log(f"验证码校验返回 continue_url: {continue_url[:100]}...")
+            except Exception as parse_error:
+                self._log(f"解析验证码校验响应失败: {parse_error}", "warning")
+
+            return True, continue_url
 
         except Exception as e:
             self._log(f"验证验证码失败: {e}", "error")
+            return False, None
+
+    def _send_passwordless_otp(self) -> bool:
+        """在 login_password 页面触发无密码 OTP 发送"""
+        try:
+            self._otp_sent_at = time.time()
+
+            response = self.session.post(
+                OPENAI_API_ENDPOINTS["passwordless_send_otp"],
+                headers={
+                    "referer": "https://auth.openai.com/u/login/password",
+                    "accept": "application/json",
+                },
+            )
+
+            self._log(f"无密码 OTP 发送状态: {response.status_code}")
+            if response.status_code != 200:
+                self._log(f"无密码 OTP 发送失败: {response.text[:200]}", "warning")
+                return False
+
+            return True
+        except Exception as e:
+            self._log(f"无密码 OTP 发送失败: {e}", "error")
             return False
+
+    def _recover_workspace_via_login_otp(self) -> Optional[str]:
+        """注册完成后若 Cookie 不含 workspace，则降级走登录 OTP 流程补拿"""
+        self._log("检测到注册态 Cookie 缺少 workspace，开始降级到登录 OTP 流程补救...")
+
+        if not self._reset_oauth_and_session():
+            return None
+
+        did, sen_token = self._bootstrap_auth_flow()
+        if not did:
+            self._log("登录补救流程失败：获取 Device ID 失败", "error")
+            return None
+
+        self._log("提交登录邮箱以进入 login_password 页面...")
+        login_result = self._submit_login_form(did, sen_token)
+        if not login_result.success:
+            self._log(f"登录补救流程失败：提交登录表单失败: {login_result.error_message}", "error")
+            return None
+
+        if login_result.page_type and login_result.page_type != "login_password":
+            self._log(f"登录补救流程返回非预期页面类型: {login_result.page_type}", "warning")
+
+        if not self._send_passwordless_otp():
+            return None
+
+        self._log("等待登录 OTP 邮件...")
+        code = self._get_verification_code()
+        if not code:
+            return None
+
+        self._log("验证登录 OTP...")
+        otp_ok, continue_url = self._validate_verification_code_and_get_continue_url(code)
+        if not otp_ok:
+            return None
+
+        # 显式访问 continue_url 以确保服务端签发完整授权 Cookie
+        if continue_url:
+            self._log("访问登录 OTP continue_url...")
+            try:
+                self.session.get(continue_url, timeout=15)
+                self._log("登录 OTP continue_url 访问完成")
+            except Exception as e:
+                self._log(f"登录 OTP continue_url 访问失败: {e}", "warning")
+
+        workspace_id = self._get_workspace_id()
+        if workspace_id:
+            self._workspace_recovered_via_login_otp = True
+            self._log("登录 OTP 补救成功，已重新获取 workspace 信息")
+        else:
+            self._log("登录 OTP 验证完成，但 Cookie 中仍无 workspace 信息", "error")
+
+        return workspace_id
 
     def _create_user_account(self) -> bool:
         """创建用户账户"""
@@ -1555,9 +1642,20 @@ class RegistrationEngine:
             # 11. 验证验证码
             self._log("11. 验证验证码...")
             self._emit_status("otp_validate", "校验验证码", step_index=11)
-            if not self._validate_verification_code(code):
+            otp_ok, continue_url = self._validate_verification_code_and_get_continue_url(code)
+            if not otp_ok:
                 result.error_message = "验证验证码失败"
                 return result
+
+            # 11.5 显式访问 continue_url 以确保服务端签发完整授权 Cookie
+            if continue_url:
+                self._log("11.5. 访问 OTP continue_url...")
+                self._emit_status("otp_continue", "跟进验证码 continue_url", step_index=11.5)
+                try:
+                    self.session.get(continue_url, timeout=15)
+                    self._log("OTP continue_url 访问完成")
+                except Exception as e:
+                    self._log(f"OTP continue_url 访问失败: {e}", "warning")
 
             # 12. [已注册账号跳过] 创建用户账户
             if self._is_existing_account:
