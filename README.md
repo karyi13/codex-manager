@@ -300,6 +300,13 @@ codex-register-v2/
 | POST | `/api/accounts/{id}/upload-sub2api` | 上传单账号到 Sub2API |
 | POST | `/api/accounts/batch-upload-sub2api` | 批量上传到 Sub2API |
 
+## 工作流说明
+
+- `docs/auto-codex-workflow-summary.md`
+  - 总结样本 `auto_codex.py` 的整体操作链路
+  - 映射到本仓库现有的模块化实现（注册 / Codex Auth / 导出 / 上传）
+  - 说明推荐维护方式：分层工作流，而不是继续堆叠单文件脚本
+
 ### 支付升级
 
 | 方法 | 路径 | 说明 |
